@@ -1,5 +1,5 @@
 global:
-  domain: browser-secure.alice-platform.com
+  domain: browser-secure.alicelaw.net
 frontend:
   replicas: 2
   image: browser-secure/frontend:latest
