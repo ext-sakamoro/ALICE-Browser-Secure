@@ -10,10 +10,19 @@ jobs:
         service: [core-engine, api-gateway]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: ext-sakamoro/ALICE-Browser
-          path: ../ALICE-Browser
+      - name: Create dependency stub
+        run: |
+          mkdir -p ../../../ALICE-Browser/src
+          cat > ../../../ALICE-Browser/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-browser"
+          version = "0.1.0"
+          edition = "2021"
+          [features]
+          default = []
+          std = []
+          TOML
+          echo "" > ../../../ALICE-Browser/src/lib.rs
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
