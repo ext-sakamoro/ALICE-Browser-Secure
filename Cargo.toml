@@ -1,0 +1,6 @@
+[package]
+name = "alice-browser-secure"
+version = "0.1.0"
+edition = "2021"
+description = "Secure browsing: CSP, sandboxing, XSS prevention, URL validation"
+license = "MIT OR Apache-2.0"
