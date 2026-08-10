@@ -7,12 +7,7 @@
     clippy::unreadable_literal
 )]
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::string::String;
 
 use crate::csp::*;
 use crate::csrf::*;
