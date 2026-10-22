@@ -151,4 +151,4 @@ NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
 
 ## License
 
-AGPL-3.0. See [LICENSE](./LICENSE).
+AGPL-3.0-or-later. See [LICENSE](./LICENSE).
