@@ -2,7 +2,7 @@
 
 Secure browser isolation powered by ALICE-Browser.
 
-**License**: AGPL-3.0
+**License**: AGPL-3.0-or-later
 
 ---
 
