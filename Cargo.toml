@@ -1,6 +1,7 @@
 [package]
 name = "alice-browser-secure"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Secure browsing: CSP, sandboxing, XSS prevention, URL validation"
-license = "AGPL-3.0-or-later"
+license = "LicenseRef-Proprietary"

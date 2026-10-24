@@ -151,4 +151,6 @@ NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
 
 ## License
 
-AGPL-3.0-or-later. See [LICENSE](./LICENSE).
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).
+
+Enquiries: https://extoria.co.jp/
