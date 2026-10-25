@@ -617,6 +617,25 @@ fn is_safe_url_data_upper() {
     assert!(!is_safe_url("DATA:text/html,<h1>hi</h1>"));
 }
 
+/// file:// と独自 scheme は安全な URL ではない
+#[test]
+fn is_safe_url_rejects_file_and_custom_schemes() {
+    assert!(!is_safe_url("file:///etc/passwd"));
+    assert!(!is_safe_url("FILE://host/share"));
+    assert!(!is_safe_url("myapp://open?x=1"));
+    assert!(is_safe_url("http://example.com/"));
+    assert!(is_safe_url("/relative/path"));
+}
+
+/// 先頭の空白・制御文字や scheme 内の tab / 改行で危険な scheme を隠せない
+#[test]
+fn is_safe_url_sees_through_whitespace_in_the_scheme() {
+    assert!(!is_safe_url(" javascript:alert(1)"));
+    assert!(!is_safe_url("\u{1}javascript:alert(1)"));
+    assert!(!is_safe_url("java\tscript:alert(1)"));
+    assert!(!is_safe_url("java\nscript:alert(1)"));
+}
+
 /// nullバイトは危険
 #[test]
 fn is_safe_url_null_byte() {
