@@ -33,11 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   fixture of every bypass shape and requires the set of flagged lines to equal
   the marked lines exactly (so a false flag and an escape cannot cancel), with
   the allowed opener not flagged. `scripts/forbid_unsafe_check.py` closes the
-  own-FFI escape (a crate declaring its own `extern "C" { fn system }`): each
-  consumer crate root must carry `#![forbid(unsafe_code)]` except an allow-list
-  (the opener wrapper plus any declared-FFI-need crate, each with a reason), and
-  an allow-listed crate may not declare a process launcher in an `extern` block.
-  This crate carries `#![forbid(unsafe_code)]` itself.
+  own-FFI escape (a crate declaring its own `extern "C" { fn system }`): every
+  consumer package must carry `[lints.rust] unsafe_code = "forbid"` in its
+  `Cargo.toml` (or inherit it through `[lints] workspace = true`), which bans
+  FFI launchers at the compiler on every target (lib, bins, examples, tests).
+  The check reads each manifest with a TOML parser — so a commented-out
+  attribute, an inner `mod` attribute or a hidden bin target cannot fake it —
+  and resolves workspace inheritance; the only exception is the allow-listed
+  opener package, trusted by review. This crate carries
+  `[lints.rust] unsafe_code = "forbid"` itself.
 
 ### Changed
 - **Breaking:** `UrlAllowList::check` now returns `CheckedUrl` instead of

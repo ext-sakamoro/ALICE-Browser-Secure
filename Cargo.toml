@@ -5,3 +5,8 @@ version = "0.1.0"
 edition = "2021"
 description = "Secure browsing: CSP, sandboxing, XSS prevention, URL validation"
 license = "LicenseRef-Proprietary"
+
+[lints.rust]
+# The no-raw-open gate (scripts/forbid_unsafe_check.py) requires this on every
+# package: it bans every FFI launcher at the compiler, on every target.
+unsafe_code = "forbid"

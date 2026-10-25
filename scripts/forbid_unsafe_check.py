@@ -6,17 +6,26 @@ A crate can declare its own launcher and call it under `unsafe`:
     extern "C" { fn system(cmd: *const u8) -> i32; }
     unsafe { system(..); }           // path is crate::system, no libc dep
 
-No name list can catch that. But every FFI call needs `unsafe`, so we require
-each of a consumer's own (workspace) crate roots to carry
-`#![forbid(unsafe_code)]`. Crates with a genuine FFI need are listed in an
-allow-list (TOML, each with a reason) — the opener wrapper and any such crate —
-and those listed crates get a second check: no `extern` block may declare a
-process-launch symbol.
+No name list catches that, and matching `#![forbid(unsafe_code)]` in the source
+is not enough: a commented-out attribute still matches the text, an inner
+attribute inside a `mod` scopes only that module, and a crate with both a lib
+and a bin hides the call in the target whose root is not read.
+
+So we do not read the source at all. Cargo's lint table is the enforcement
+point: `[lints.rust] unsafe_code = "forbid"` in a package's Cargo.toml applies
+to EVERY target of the package (lib, bins, examples, tests), cannot be shadowed
+by a module, and a comment cannot fake it. This check parses each workspace
+package's manifest (and the workspace root) with tomllib — structured, so
+comments and strings do not match — resolves `[lints] workspace = true`
+inheritance, and requires the effective level to be `forbid` for every package
+except the allow-listed opener.
 
 Allow-list file (default gates/no-raw-open/unsafe-allow.toml):
     [[allow]]
     name = "my-opener"
     reason = "the single opener wrapper; performs the one real launch"
+An allow-listed package is trusted by review (it is the one place a launch is
+intended); the check does not try to prove it stays unsafe-free.
 
 Exit: 0 clean, 1 self-test failure, 2 a finding or nothing compared.
 
@@ -27,88 +36,74 @@ usage:
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-LAUNCH = [
-    "system", "popen", "fork",
-    "execv", "execvp", "execve", "execvpe", "execl", "execlp", "execle",
-    "execveat", "fexecve",
-    "posix_spawn", "posix_spawnp",
-    "CreateProcessW", "CreateProcessA",
-    "ShellExecuteW", "ShellExecuteA", "ShellExecuteExW",
-]
-_LAUNCH_FN = re.compile(r"\bfn\s+(" + "|".join(LAUNCH) + r")\b")
-_FORBID = re.compile(r"#!\s*\[\s*forbid\s*\(([^)]*)\)\s*\]")
-_EXTERN_OPEN = re.compile(r'\bextern\b[^\{;]*\{')
+
+def _level(value: object) -> str | None:
+    """Normalize a cargo lint value to its level string.
+
+    `unsafe_code = "forbid"` -> "forbid";
+    `unsafe_code = { level = "forbid", priority = -1 }` -> "forbid".
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        lvl = value.get("level")
+        return lvl if isinstance(lvl, str) else None
+    return None
 
 
-def has_forbid_unsafe(root_text: str) -> bool:
-    for m in _FORBID.finditer(root_text):
-        items = [i.strip() for i in m.group(1).split(",")]
-        if "unsafe_code" in items:
-            return True
-    return False
+def effective_unsafe_level(pkg_lints: dict, ws_lints: dict) -> str | None:
+    """The effective `rust.unsafe_code` level for a package, or None if unset.
+
+    `[lints] workspace = true` inherits `[workspace.lints]` wholesale (cargo
+    forbids mixing `workspace = true` with other lint entries), so we take the
+    workspace table in that case and the package's own table otherwise.
+    """
+    source = ws_lints if pkg_lints.get("workspace") is True else pkg_lints
+    rust = source.get("rust") if isinstance(source, dict) else None
+    if not isinstance(rust, dict):
+        return None
+    return _level(rust.get("unsafe_code"))
 
 
-def extern_launchers(text: str) -> list[str]:
-    """Launch symbols declared inside any `extern` block in `text`."""
-    out: list[str] = []
-    depth = 0
-    in_extern = False
-    i = 0
-    n = len(text)
-    # walk char by char, tracking brace depth once an `extern … {` opens
-    while i < n:
-        if not in_extern:
-            m = _EXTERN_OPEN.search(text, i)
-            if not m:
-                break
-            in_extern = True
-            depth = 1
-            i = m.end()
-            block_start = i
-            continue
-        c = text[i]
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                block = text[block_start:i]
-                out += _LAUNCH_FN.findall(block)
-                in_extern = False
-        i += 1
-    return out
+def check(packages: list[dict], allow: dict[str, str]) -> tuple[list[str], int]:
+    """packages: [{name, pkg_lints, ws_lints}]; allow: name->reason.
 
-
-def check(crates: list[dict], allow: dict[str, str]) -> tuple[list[str], int]:
-    """crates: [{name, root_text, source_texts:[...]}]; allow: name->reason."""
+    An allow-listed package is trusted by review and skipped. Every other
+    package must resolve to `unsafe_code = "forbid"`; missing or a weaker level
+    (deny / warn / allow) is a finding.
+    """
     findings: list[str] = []
     compared = 0
-    for c in crates:
+    for p in packages:
         compared += 1
-        name = c["name"]
+        name = p["name"]
         if name in allow:
-            seen: list[str] = []
-            for t in c.get("source_texts", [c.get("root_text", "")]):
-                seen += extern_launchers(t)
-            for sym in sorted(set(seen)):
-                findings.append(f"{name}: allow-listed, but declares launcher `{sym}` in an extern block")
-        else:
-            if not has_forbid_unsafe(c.get("root_text", "")):
-                findings.append(f"{name}: crate root lacks #![forbid(unsafe_code)] (and is not in the opener allow-list)")
+            continue
+        lvl = effective_unsafe_level(p.get("pkg_lints", {}), p.get("ws_lints", {}))
+        if lvl == "forbid":
+            continue
+        shown = lvl if lvl is not None else "unset"
+        findings.append(
+            f"{name}: effective [lints.rust] unsafe_code is `{shown}`, "
+            f"must be `forbid` (and the package is not the allow-listed opener)"
+        )
     return findings, compared
+
+
+def _read_toml(path: Path) -> dict:
+    import tomllib
+    return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
 def _read_allow(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
     try:
-        import tomllib
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = _read_toml(path)
     except Exception as e:  # noqa: BLE001
         print(f"forbid_unsafe_check: cannot read {path}: {e}", file=sys.stderr)
         return {}
@@ -124,51 +119,62 @@ def run(manifest: str | None, allow_file: Path) -> int:
     except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
         print(f"forbid_unsafe_check: cargo metadata failed: {e}", file=sys.stderr)
         return 2
+
+    ws_root = md.get("workspace_root")
+    ws_lints: dict = {}
+    if ws_root:
+        try:
+            ws_lints = _read_toml(Path(ws_root) / "Cargo.toml").get("workspace", {}).get("lints", {})
+        except Exception as e:  # noqa: BLE001
+            print(f"forbid_unsafe_check: cannot read workspace root manifest: {e}", file=sys.stderr)
+            return 2
+
     allow = _read_allow(allow_file)
-    crates = []
+    packages = []
     for pkg in md.get("packages", []):
-        roots = [Path(t["src_path"]) for t in pkg.get("targets", [])
-                 if set(t.get("kind", [])) & {"lib", "bin", "cdylib", "staticlib", "rlib"}]
-        if not roots:
-            continue
-        root_text = roots[0].read_text(encoding="utf-8", errors="replace")
-        srcs = [root_text]
-        if pkg["name"] in allow:  # second check needs the whole crate
-            crate_dir = roots[0].parent
-            srcs = [p.read_text(encoding="utf-8", errors="replace") for p in crate_dir.rglob("*.rs")]
-        crates.append({"name": pkg["name"], "root_text": root_text, "source_texts": srcs})
-    findings, compared = check(crates, allow)
+        try:
+            pkg_lints = _read_toml(Path(pkg["manifest_path"])).get("lints", {})
+        except Exception as e:  # noqa: BLE001
+            print(f"forbid_unsafe_check: cannot read {pkg['manifest_path']}: {e}", file=sys.stderr)
+            return 2
+        packages.append({"name": pkg["name"], "pkg_lints": pkg_lints, "ws_lints": ws_lints})
+
+    findings, compared = check(packages, allow)
     if compared == 0:
-        print("forbid_unsafe_check: compared 0 crates", file=sys.stderr)
+        print("forbid_unsafe_check: compared 0 packages", file=sys.stderr)
         return 2
     for f in findings:
         print(f)
-    print(f"forbid_unsafe_check: {len(findings)} finding(s) across {compared} crate(s)")
+    print(f"forbid_unsafe_check: {len(findings)} finding(s) across {compared} package(s)")
     return 2 if findings else 0
 
 
 def self_test() -> int:
-    crates = [
-        {"name": "ok-crate", "root_text": "#![no_std]\n#![forbid(unsafe_code)]\n", "source_texts": []},
-        {"name": "no-forbid", "root_text": "#![no_std]\n", "source_texts": []},  # finding
-        {"name": "own-ffi", "root_text": "pub fn go(){}\n",                      # finding (no forbid)
-         "source_texts": ['extern "C" { fn system(c: *const u8) -> i32; }\nfn go(){ unsafe { system(core::ptr::null()); } }\n']},
-        {"name": "the-opener", "root_text": "pub fn open(){}\n",                 # allow-listed, clean extern
-         "source_texts": ['extern "C" { fn write(fd: i32); }\n']},
-        {"name": "bad-opener", "root_text": "pub fn open(){}\n",                 # allow-listed BUT declares a launcher
-         "source_texts": ['extern "C" { fn popen(c: *const u8, m: *const u8) -> *mut u8; }\n']},
+    # The 3 source-shapes 9e found all reduce to "no manifest forbid" here,
+    # because this check reads the manifest, not the source:
+    #   - a commented `// #![forbid]`     -> no [lints] -> unset -> finding
+    #   - an inner `mod m { #![forbid] }` -> no [lints] -> unset -> finding
+    #   - lib carries it, bin does not    -> the manifest covers both -> no escape
+    packages = [
+        {"name": "ok-pkg", "pkg_lints": {"rust": {"unsafe_code": "forbid"}}, "ws_lints": {}},
+        {"name": "ok-pkg-table", "pkg_lints": {"rust": {"unsafe_code": {"level": "forbid", "priority": -1}}}, "ws_lints": {}},
+        {"name": "ok-workspace", "pkg_lints": {"workspace": True}, "ws_lints": {"rust": {"unsafe_code": "forbid"}}},
+        {"name": "unset", "pkg_lints": {}, "ws_lints": {}},  # finding (commented / nested-mod shape)
+        {"name": "too-weak", "pkg_lints": {"rust": {"unsafe_code": "deny"}}, "ws_lints": {}},  # finding
+        {"name": "ws-missing", "pkg_lints": {"workspace": True}, "ws_lints": {}},  # finding: workspace=true, ws lacks it
+        {"name": "the-opener", "pkg_lints": {}, "ws_lints": {}},  # allow-listed, trusted by review -> skipped
     ]
-    allow = {"the-opener": "the opener wrapper", "bad-opener": "claims an FFI need"}
-    findings, compared = check(crates, allow)
+    allow = {"the-opener": "the opener wrapper"}
+    findings, compared = check(packages, allow)
     want = {
-        "no-forbid: crate root lacks #![forbid(unsafe_code)] (and is not in the opener allow-list)",
-        "own-ffi: crate root lacks #![forbid(unsafe_code)] (and is not in the opener allow-list)",
-        "bad-opener: allow-listed, but declares launcher `popen` in an extern block",
+        "unset: effective [lints.rust] unsafe_code is `unset`, must be `forbid` (and the package is not the allow-listed opener)",
+        "too-weak: effective [lints.rust] unsafe_code is `deny`, must be `forbid` (and the package is not the allow-listed opener)",
+        "ws-missing: effective [lints.rust] unsafe_code is `unset`, must be `forbid` (and the package is not the allow-listed opener)",
     }
     ok = True
-    if compared != 5:
+    if compared != 7:
         ok = False
-        print(f"self-test: compared {compared}, expected 5", file=sys.stderr)
+        print(f"self-test: compared {compared}, expected 7", file=sys.stderr)
     if set(findings) != want:
         ok = False
         print(f"self-test: findings {sorted(findings)} != expected {sorted(want)}", file=sys.stderr)
