@@ -8,7 +8,7 @@
 //! | [`csp`] | Content Security Policy generation |
 //! | [`xss`] | XSS detection |
 //! | [`sanitizer`] | HTML sanitization |
-//! | [`url`] | URL validation |
+//! | [`url`] | URL validation: strict parsing and the caller's allow-list ([`UrlAllowList`]) |
 //! | [`csrf`] | CSRF token |
 //! | [`error`] | Error types |
 //! | [`prelude`] | 主要 API 一括 re-export |

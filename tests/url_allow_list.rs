@@ -18,7 +18,11 @@ fn the_listed_origin_is_allowed() {
         // the host is compared in its canonical (lowercase) form
         "https://CHECKOUT.Stripe.COM/upper",
     ] {
-        assert_eq!(l.check(url).map(|u| u.host().to_owned()), Ok("checkout.stripe.com".to_owned()), "{url}");
+        assert_eq!(
+            l.check(url).map(|u| u.host().to_owned()),
+            Ok("checkout.stripe.com".to_owned()),
+            "{url}"
+        );
     }
 }
 
@@ -26,12 +30,27 @@ fn the_listed_origin_is_allowed() {
 fn the_host_is_the_authority_not_a_substring() {
     let l = stripe();
     for (url, why) in [
-        ("https://evil.example#@checkout.stripe.com/", UrlRejection::Host),
-        ("https://evil.example?@checkout.stripe.com/", UrlRejection::Host),
-        ("https://evil.example/@checkout.stripe.com/", UrlRejection::Host),
-        ("https://checkout.stripe.com.evil.example/", UrlRejection::Host),
+        (
+            "https://evil.example#@checkout.stripe.com/",
+            UrlRejection::Host,
+        ),
+        (
+            "https://evil.example?@checkout.stripe.com/",
+            UrlRejection::Host,
+        ),
+        (
+            "https://evil.example/@checkout.stripe.com/",
+            UrlRejection::Host,
+        ),
+        (
+            "https://checkout.stripe.com.evil.example/",
+            UrlRejection::Host,
+        ),
         ("https://evilcheckout.stripe.com/", UrlRejection::Host),
-        ("https://checkout.stripe.com./trailing-dot", UrlRejection::Host),
+        (
+            "https://checkout.stripe.com./trailing-dot",
+            UrlRejection::Host,
+        ),
         ("https://[::1]/", UrlRejection::Host),
     ] {
         assert_eq!(l.check(url).err(), Some(why), "{url}");
@@ -101,8 +120,14 @@ fn malformed_and_obfuscated_forms_are_rejected() {
 fn an_idn_lookalike_host_is_rejected() {
     let l = stripe();
     // Cyrillic і (U+0456) in place of i, and a punycode host that is not on the list
-    assert_eq!(l.check("https://checkout.str\u{456}pe.com/").err(), Some(UrlRejection::Host));
-    assert_eq!(l.check("https://xn--checkout-stripe-xyz.com/").err(), Some(UrlRejection::Host));
+    assert_eq!(
+        l.check("https://checkout.str\u{456}pe.com/").err(),
+        Some(UrlRejection::Host)
+    );
+    assert_eq!(
+        l.check("https://xn--checkout-stripe-xyz.com/").err(),
+        Some(UrlRejection::Host)
+    );
 }
 
 #[test]
@@ -136,7 +161,10 @@ fn the_list_is_data_and_is_validated() {
         (&["https"][..], &["checkout.str\u{456}pe.com"][..]),
         (&["htt ps"][..], &["checkout.stripe.com"][..]),
     ] {
-        assert!(UrlAllowList::new(schemes, hosts).is_err(), "{schemes:?} {hosts:?}");
+        assert!(
+            UrlAllowList::new(schemes, hosts).is_err(),
+            "{schemes:?} {hosts:?}"
+        );
     }
     assert!(stripe().with_path_prefix("pay").is_err());
     assert!(stripe().with_path_prefix("/pay/../x").is_err());
@@ -145,6 +173,9 @@ fn the_list_is_data_and_is_validated() {
 #[test]
 fn parse_strict_reports_the_parts() {
     let u = parse_strict("https://Checkout.Stripe.com:443/pay?id=1#f").expect("parses");
-    assert_eq!((u.scheme(), u.host(), u.port(), u.path()), ("https", "checkout.stripe.com", None, "/pay"));
+    assert_eq!(
+        (u.scheme(), u.host(), u.port(), u.path()),
+        ("https", "checkout.stripe.com", None, "/pay")
+    );
     assert_eq!((u.query(), u.fragment()), (Some("id=1"), Some("f")));
 }

@@ -1,6 +1,7 @@
 //! Cross-module integration tests
 
 #![allow(
+    deprecated,
     clippy::doc_markdown,
     clippy::assertions_on_constants,
     clippy::suboptimal_flops,
