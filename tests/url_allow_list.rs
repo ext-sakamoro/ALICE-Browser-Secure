@@ -200,8 +200,16 @@ fn encoded_reserved_bytes_and_double_encoding_are_refused() {
         "https://checkout.stripe.com/pay/x%00y",
         "https://checkout.stripe.com/pay/x%0Ay",
     ] {
-        assert_eq!(with_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
-        assert_eq!(no_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+        assert_eq!(
+            with_prefix.check(url).err(),
+            Some(UrlRejection::Path),
+            "{url}"
+        );
+        assert_eq!(
+            no_prefix.check(url).err(),
+            Some(UrlRejection::Path),
+            "{url}"
+        );
     }
     // unreserved and non-ASCII bytes may stay encoded
     assert!(with_prefix.allows("https://checkout.stripe.com/pay/a%20b"));

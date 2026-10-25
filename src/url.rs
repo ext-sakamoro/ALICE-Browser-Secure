@@ -108,8 +108,8 @@ pub enum UrlRejection {
     Host,
     /// The path is outside the list's path prefix.
     PathPrefix,
-    /// The path carries a dot segment (`.` / `..`) or a percent-encoded `/`, `\\` or `.`: a server that decodes
-    /// them before routing would resolve the path somewhere else.
+    /// The path carries a dot segment (`.` / `..`), a malformed escape, or a percent-encoded `%`, `/`, `\\`, `.`,
+    /// reserved or control byte: a server that decodes the path (once or more) would resolve it somewhere else.
     Path,
 }
 
@@ -279,10 +279,29 @@ pub fn parse_strict(url: &str) -> Result<StrictUrl, UrlRejection> {
     parse_after_scheme(scheme, rest)
 }
 
-/// `true` when the path carries `%2f` / `%5c` / `%2e` (any case) or a `.` / `..` segment.
+/// `true` when the path carries a `.` / `..` segment, a malformed `%` escape, or a `%XX` that decodes to a
+/// control byte, `%`, `.`, `/`, `\\` or another reserved character (`:?#[]@!$&'()*+,;=`). Nothing is decoded:
+/// such a path is refused, so the answer does not depend on how many times a server decodes it.
 fn unsafe_path(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower.contains("%2f") || lower.contains("%5c") || lower.contains("%2e") || has_dot_segment(path)
+    const REFUSED: &[u8] = b"%./\\:?#[]@!$&'()*+,;=";
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = |j: usize| bytes.get(j).and_then(|c| char::from(*c).to_digit(16));
+            let Some(decoded) = hex(i + 1).zip(hex(i + 2)).map(|(h, l)| h * 16 + l) else {
+                return true;
+            };
+            let decoded = decoded as u8;
+            if decoded < 0x20 || decoded == 0x7f || REFUSED.contains(&decoded) {
+                return true;
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    has_dot_segment(path)
 }
 
 /// `true` when a path segment is `.` or `..`, written plainly or percent-encoded (`%2e`, any case).
