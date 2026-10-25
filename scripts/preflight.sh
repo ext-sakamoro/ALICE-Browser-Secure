@@ -31,8 +31,22 @@ need actionlint "brew install actionlint"
 step "ci.yml / actionlint: actionlint"
 actionlint .github/workflows/*.yml
 
+step "ci.yml / url-crate: no-raw-open gate (clippy disallowed-types/methods, line-set self-test)"
+bash scripts/no_raw_open_selftest.sh
+
+step "ci.yml / url-crate: no-opener-dep gate (direct-dependency check)"
+python3 scripts/no_opener_dep_check.py --self-test
+python3 scripts/no_opener_dep_check.py
+
+step "ci.yml / url-crate: forbid-unsafe gate (own-FFI closed)"
+python3 scripts/forbid_unsafe_check.py --self-test
+python3 scripts/forbid_unsafe_check.py --allow-file gates/no-raw-open/unsafe-allow.toml
+
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi
+
+step "ci.yml / url-crate: cargo test (unit + integration + doctests, MIN_PASSED floor)"
+bash scripts/url_crate_test.sh
 
 echo; echo "preflight OK"

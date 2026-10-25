@@ -1,0 +1,16 @@
+# Allow-list for the forbid-unsafe side of the no-raw-open gate (shipped; a
+# consumer copies this and fills it in). Every one of a consumer's own crate
+# roots must carry `#![forbid(unsafe_code)]`, EXCEPT the crates listed here —
+# the single opener wrapper, plus any crate with a genuine FFI need. Each listed
+# crate is still checked that no `extern` block declares a process launcher
+# (system, popen, fork, exec*, posix_spawn*, CreateProcess*, ShellExecute*).
+#
+# This repository (alice-browser-secure) opens nothing and does no FFI, so it
+# carries forbid(unsafe_code) itself and this list is empty.
+#
+# Example for a consumer:
+#   [[allow]]
+#   name = "my-app-opener"
+#   reason = "the single opener wrapper; performs the one real browser launch"
+
+allow = []

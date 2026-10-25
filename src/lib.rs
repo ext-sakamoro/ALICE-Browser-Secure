@@ -14,6 +14,9 @@
 //! | [`prelude`] | 主要 API 一括 re-export |
 
 #![no_std]
+// This crate opens nothing and does no FFI; forbidding unsafe is both honest
+// and the gate the no-opener check requires of a consumer crate root.
+#![forbid(unsafe_code)]
 
 extern crate alloc;
 
