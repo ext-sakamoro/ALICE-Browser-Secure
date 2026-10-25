@@ -49,3 +49,26 @@ jobs:
         with:
           fail_level: error
           reporter: github-check
+
+  url-crate:
+    name: url crate (test + no-raw-open gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # the root crate is std-free and standalone; its tests (and the CheckedUrl
+      # compile-fail doctest) run here — the services matrix only `cargo check`s
+      # the script enforces a MIN_PASSED floor (fails on 0 = nothing ran)
+      - run: bash scripts/url_crate_test.sh
+      # the no-raw-open gate: clippy disallowed-types/methods catches every
+      # launch shape; the self-test lints a fixture of all bypasses and compares
+      # the flagged line-set to the marked line-set exactly
+      - run: bash scripts/no_raw_open_selftest.sh
+      # the direct-dependency side of the gate (a launcher crate must not be a
+      # direct dep except the opener wrapper); self-test, then the repo's graph
+      - run: python3 scripts/no_opener_dep_check.py --self-test
+      - run: python3 scripts/no_opener_dep_check.py

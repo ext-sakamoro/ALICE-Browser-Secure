@@ -1,0 +1,18 @@
+[package]
+name = "bypasses"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+open = { path = "../stub-open" }
+opener = { path = "../stub-opener" }
+webbrowser = { path = "../stub-webbrowser" }
+libc = { path = "../stub-libc" }
+windows-sys = { path = "../stub-windows-sys" }
+tokio = { path = "../stub-tokio" }
+async-process = { path = "../stub-async-process" }
+nix = { path = "../stub-nix" }

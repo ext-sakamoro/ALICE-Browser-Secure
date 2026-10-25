@@ -1,0 +1,55 @@
+# no-raw-open gate — shipped clippy snippet. A consumer that opens a URL must
+# route it through `alice_browser_secure::open_with(&opener, &CheckedUrl)`.
+#
+# `disallowed-types` bans the process-builder TYPES, so every constructor and
+# builder method on them is caught regardless of call shape (clippy resolves
+# paths, so renamed imports, split lines and aliased variables are caught too).
+# `disallowed-methods` bans the free functions that launch a process or a
+# browser directly. The one legitimate opener carries
+# `#[allow(clippy::disallowed_methods, clippy::disallowed_types, reason = "...")]`.
+#
+# Merge into the consumer's clippy.toml and lint with
+# `-D clippy::disallowed_types -D clippy::disallowed_methods`. The crate
+# dependency side is covered by the direct-dependency check, not by a list.
+disallowed-types = [
+    { path = "std::process::Command", reason = "launches a process; open a URL via alice_browser_secure::open_with(&CheckedUrl)" },
+    { path = "tokio::process::Command", reason = "launches a process; use open_with(&CheckedUrl)" },
+    { path = "async_process::Command", reason = "launches a process; use open_with(&CheckedUrl)" },
+]
+disallowed-methods = [
+    { path = "open::that", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "open::that_detached", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "open::that_in_background", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "open::with", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "open::with_detached", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "opener::open", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "opener::open_browser", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "webbrowser::open", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "webbrowser::open_browser", reason = "raw opener; use open_with(&CheckedUrl)" },
+    { path = "libc::system", reason = "launches a shell; use open_with(&CheckedUrl)" },
+    { path = "libc::popen", reason = "launches a shell; use open_with(&CheckedUrl)" },
+    { path = "libc::fork", reason = "process creation; use open_with(&CheckedUrl)" },
+    { path = "libc::execv", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::execvp", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::execve", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::execvpe", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::execl", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::execlp", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::execle", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::fexecve", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "libc::posix_spawn", reason = "spawns a process; use open_with(&CheckedUrl)" },
+    { path = "libc::posix_spawnp", reason = "spawns a process; use open_with(&CheckedUrl)" },
+    { path = "nix::unistd::execv", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "nix::unistd::execve", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "nix::unistd::execvp", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "nix::unistd::execvpe", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "nix::unistd::execveat", reason = "exec family; use open_with(&CheckedUrl)" },
+    { path = "nix::unistd::fork", reason = "process creation; use open_with(&CheckedUrl)" },
+    { path = "windows_sys::Win32::UI::Shell::ShellExecuteW", reason = "launches via the shell; use open_with(&CheckedUrl)" },
+    { path = "windows_sys::Win32::UI::Shell::ShellExecuteA", reason = "launches via the shell; use open_with(&CheckedUrl)" },
+    { path = "windows_sys::Win32::UI::Shell::ShellExecuteExW", reason = "launches via the shell; use open_with(&CheckedUrl)" },
+    { path = "windows_sys::Win32::System::Threading::CreateProcessW", reason = "launches a process; use open_with(&CheckedUrl)" },
+    { path = "windows_sys::Win32::System::Threading::CreateProcessA", reason = "launches a process; use open_with(&CheckedUrl)" },
+    { path = "winapi::um::shellapi::ShellExecuteW", reason = "launches via the shell; use open_with(&CheckedUrl)" },
+    { path = "winapi::um::shellapi::ShellExecuteA", reason = "launches via the shell; use open_with(&CheckedUrl)" },
+]
