@@ -1,11 +1,16 @@
 # Allow-list for the forbid-unsafe side of the no-raw-open gate (shipped; a
-# consumer copies this and fills it in). Every one of a consumer's own packages
-# must carry `[lints.rust] unsafe_code = "forbid"` in its Cargo.toml (or
-# `[lints] workspace = true` with `[workspace.lints.rust] unsafe_code = "forbid"`
-# in the workspace root) — the compiler then bans every FFI launcher on every
-# target. The only EXCEPTION is a package listed here: the single opener
-# wrapper, which is where the one intended launch lives. A listed package is
-# trusted by review, so the check does not inspect its source.
+# consumer copies this and fills it in). Every one of a consumer's own (local)
+# packages must carry `[lints.rust] unsafe_code = "forbid"` in its Cargo.toml
+# (or `[lints] workspace = true` with `[workspace.lints.rust] unsafe_code =
+# "forbid"`) — the compiler then bans every FFI launcher on every target. The
+# check also scans every local `macro_rules!` body for an `unsafe`/`extern`
+# token (an exported macro smuggles unsafe past the forbid lint) and bans local
+# `proc-macro = true` crates. The only EXCEPTION is a package listed here: the
+# single opener wrapper, where the one intended launch lives. A listed package
+# is trusted by review and skipped by all three checks.
+#
+# Scope: a NON-local dependency (registry or git) is out of scope — the same
+# trust boundary as any dependency; vet dependencies separately.
 #
 # This repository (alice-browser-secure) opens nothing, so it carries
 # `[lints.rust] unsafe_code = "forbid"` itself and this list is empty.
