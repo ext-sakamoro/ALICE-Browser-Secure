@@ -140,12 +140,40 @@ fn the_path_prefix_matches_whole_segments() {
         "https://checkout.stripe.com/payment",
         "https://checkout.stripe.com/PAY",
         "https://checkout.stripe.com/",
-        "https://checkout.stripe.com/pay/../admin",
-        "https://checkout.stripe.com/pay/%2e%2e/admin",
-        "https://checkout.stripe.com/pay/%2E%2e/admin",
     ] {
         assert_eq!(l.check(url).err(), Some(UrlRejection::PathPrefix), "{url}");
     }
+}
+
+#[test]
+fn dot_segments_and_encoded_separators_are_refused_with_or_without_a_prefix() {
+    // a server or proxy that decodes %2F / %5C / %2E before routing would resolve these outside the path the
+    // list allows, so the path must carry none of them (refused whether a prefix is set or not)
+    let with_prefix = stripe().with_path_prefix("/pay").expect("valid prefix");
+    for url in [
+        "https://checkout.stripe.com/pay/../admin",
+        "https://checkout.stripe.com/pay/%2e%2e/admin",
+        "https://checkout.stripe.com/pay/%2E%2e/admin",
+        "https://checkout.stripe.com/pay/%2e%2e%2fadmin",
+        "https://checkout.stripe.com/pay/..%2Fadmin",
+        "https://checkout.stripe.com/pay/%2E%2E%5Cadmin",
+        "https://checkout.stripe.com/pay/x%2Fy",
+        "https://checkout.stripe.com/pay/x%5cy",
+    ] {
+        assert_eq!(with_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+    }
+    let no_prefix = stripe();
+    for url in [
+        "https://checkout.stripe.com/a/../b",
+        "https://checkout.stripe.com/a/./b",
+        "https://checkout.stripe.com/a/%2e%2e/b",
+        "https://checkout.stripe.com/a%2fb",
+        "https://checkout.stripe.com/a%5Cb",
+    ] {
+        assert_eq!(no_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+    }
+    // percent-encoding of other bytes in the path is untouched
+    assert!(no_prefix.allows("https://checkout.stripe.com/a%20b"));
 }
 
 #[test]
