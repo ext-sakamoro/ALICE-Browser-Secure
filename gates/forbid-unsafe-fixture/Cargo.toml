@@ -1,0 +1,9 @@
+# Fixture for scripts/forbid_unsafe_check.py, run by scripts/forbid_unsafe_fixture_test.sh.
+# Every escape here is a shape the check must flag; `app` is the clean caller.
+# This is its own workspace, separate from the crate under test.
+[workspace]
+members = ["app", "mac", "rawid", "inc", "tgt", "pm"]
+exclude = ["outside"]
+resolver = "2"
+[workspace.lints.rust]
+unsafe_code = "forbid"

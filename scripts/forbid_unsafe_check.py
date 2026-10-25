@@ -26,10 +26,16 @@ does not cover on its own:
     count — and we ban local `proc-macro = true` crates outside the allow-list
     (scanning their generated output is impractical).
 
-Scope boundary: a NON-local dependency (registry or git) that calls a launcher
-inside a safe `fn`, or exports an `unsafe` macro, is the same trust boundary as
-any dependency — out of scope here; vet dependencies separately. This gate
-covers your own (local) code.
+Threat model and scope (frozen): this gate stops an ACCIDENTAL or NAIVE raw
+open or FFI process launch in our own (local) code — a `Command`, a launcher
+crate, an own `extern` declaration, an `unsafe`-smuggling macro, a proc-macro.
+It takes its answers from cargo/rustc, not from re-derivation: the set of local
+packages and their proc-macro-ness from `cargo metadata`, and the exact set of
+source files (including `include!`d and `#[path]`d files, any extension) from
+rustc dep-info. DELIBERATE obfuscation by a code author is out of scope and is
+caught by code review, not by this gate; a NON-local dependency (registry or
+git) is the same trust boundary as any dependency — vet dependencies
+separately. Further adversarial shapes are tracked as issues, not new checks.
 
 Allow-list file (default gates/no-raw-open/unsafe-allow.toml):
     [[allow]]
@@ -145,9 +151,12 @@ def strip_rust(text: str) -> str:
 
 
 def macro_rules_bodies(stripped: str) -> list[str]:
-    """Bodies of every `macro_rules!` in already-stripped source."""
+    """Bodies of every `macro_rules!` in already-stripped source.
+
+    The name may be a raw identifier (`macro_rules! r#name`).
+    """
     bodies: list[str] = []
-    for m in re.finditer(r"\bmacro_rules\s*!\s*\w+\s*", stripped):
+    for m in re.finditer(r"\bmacro_rules\s*!\s*(?:r#)?\w+\s*", stripped):
         k = m.end()
         while k < len(stripped) and stripped[k] in " \t\r\n":
             k += 1
@@ -244,17 +253,71 @@ def _workspace_lints(start: Path) -> dict:
         d = d.parent
 
 
-def _is_proc_macro(manifest: dict) -> bool:
-    return manifest.get("lib", {}).get("proc-macro") is True
+def _is_proc_macro(pkg: dict) -> bool:
+    """A proc-macro crate, per cargo's own target kinds (covers both the
+    `proc-macro = true` and the deprecated `proc_macro = true` manifest key)."""
+    for t in pkg.get("targets", []):
+        if "proc-macro" in t.get("kind", []):
+            return True
+    return False
 
 
-def _crate_rs_texts(crate_dir: Path) -> list[str]:
-    texts = []
-    for p in crate_dir.rglob("*.rs"):
-        if "/target/" in str(p).replace("\\", "/"):
+def _parse_dep_info(text: str) -> set[str]:
+    """Source paths from a cargo `.d` file (make-style `OUTPUT: in1 in2 ...`).
+
+    Cargo writes one rule line per target with absolute paths; a space inside a
+    path is escaped `\\ `. Line continuations end with `\\`.
+    """
+    srcs: set[str] = set()
+    text = text.replace("\\\n", " ")
+    for line in text.splitlines():
+        _, sep, rhs = line.partition(":")   # first colon: unix abs paths have none before it
+        if not sep:
             continue
-        texts.append(p.read_text(encoding="utf-8", errors="replace"))
-    return texts
+        rhs = rhs.strip()
+        if not rhs:
+            continue
+        for tok in re.split(r"(?<!\\)\s+", rhs):
+            tok = tok.replace("\\ ", " ").strip()
+            if tok:
+                srcs.add(tok)
+    return srcs
+
+
+_ARTIFACT_EXT = {".d", ".rmeta", ".rlib", ".so", ".dylib", ".dll", ".a", ".exe"}
+
+
+def _crate_sources(deps_dir: Path, pkg_name: str, base: Path) -> list[str]:
+    """Every source file rustc read for a package, from its dep-info files.
+
+    Covers `include!`d and `#[path]`d files and any extension; never output
+    dirs. Cargo writes paths relative to the workspace root, so a relative path
+    is resolved against `base`. Empty when the package did not compile (the
+    caller treats that as a reason to fail, not as a clean result)."""
+    sanitized = pkg_name.replace("-", "_")
+    out: list[str] = []
+    seen: set[Path] = set()
+    for d in sorted(deps_dir.glob(f"{sanitized}-*.d")):
+        for s in _parse_dep_info(d.read_text(encoding="utf-8", errors="replace")):
+            p = Path(s)
+            if not p.is_absolute():
+                p = base / p
+            if p in seen or p.suffix in _ARTIFACT_EXT or not p.is_file():
+                continue
+            seen.add(p)
+            out.append(p.read_text(encoding="utf-8", errors="replace"))
+    return out
+
+
+def _cargo_check(manifest: str | None) -> tuple[bool, str]:
+    cmd = ["cargo", "check", "--all-targets", "--quiet"]
+    if manifest:
+        cmd += ["--manifest-path", manifest]
+    try:
+        r = subprocess.run(cmd, text=True, capture_output=True)
+    except FileNotFoundError as e:
+        return False, str(e)
+    return r.returncode == 0, r.stderr
 
 
 def run(manifest: str | None, allow_file: Path) -> int:
@@ -268,6 +331,15 @@ def run(manifest: str | None, allow_file: Path) -> int:
     except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
         print(f"forbid_unsafe_check: cargo metadata failed: {e}", file=sys.stderr)
         return 2
+
+    # dep-info is the authoritative file list (fix for include! / #[path] / a
+    # dir named target); it exists only after a successful compile.
+    ok, err = _cargo_check(manifest)
+    if not ok:
+        print(f"forbid_unsafe_check: cargo check failed, cannot read dep-info:\n{err[-2000:]}", file=sys.stderr)
+        return 2
+    deps_dir = Path(md["target_directory"]) / "debug" / "deps"
+    ws_root = Path(md["workspace_root"])
 
     allow = _read_allow(allow_file)
     packages = []
@@ -286,8 +358,8 @@ def run(manifest: str | None, allow_file: Path) -> int:
             "name": pkg["name"],
             "pkg_lints": pkg_lints,
             "ws_lints": ws_lints,
-            "is_proc_macro": _is_proc_macro(mani),
-            "rs_texts": _crate_rs_texts(mani_path.parent),
+            "is_proc_macro": _is_proc_macro(pkg),
+            "rs_texts": _crate_sources(deps_dir, pkg["name"], ws_root),
         })
 
     findings, compared = check(packages, allow)

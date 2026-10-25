@@ -42,6 +42,9 @@ step "ci.yml / url-crate: forbid-unsafe gate (own-FFI closed)"
 python3 scripts/forbid_unsafe_check.py --self-test
 python3 scripts/forbid_unsafe_check.py --allow-file gates/no-raw-open/unsafe-allow.toml
 
+step "ci.yml / url-crate: forbid-unsafe fixture (real check flags every shape)"
+bash scripts/forbid_unsafe_fixture_test.sh
+
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi

@@ -3,6 +3,10 @@ node_modules/
 .next/
 out/
 target/
+# the forbid-unsafe fixture has a crate module directory literally named
+# `target` (one of the escape shapes); keep it tracked despite the rule above
+!gates/forbid-unsafe-fixture/**/src/target/
+!gates/forbid-unsafe-fixture/**/src/target/**
 dist/
 .env
 .env.local

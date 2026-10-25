@@ -1,0 +1,6 @@
+[package]
+name = "mac"
+version = "0.0.0"
+edition = "2021"
+[lints]
+workspace = true

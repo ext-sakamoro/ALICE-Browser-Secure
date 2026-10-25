@@ -49,7 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   crates. The only exception is the allow-listed opener package, trusted by
   review. Non-local (registry/git) dependencies are out of scope — the same
   trust boundary as any dependency. This crate carries
-  `[lints.rust] unsafe_code = "forbid"` itself.
+  `[lints.rust] unsafe_code = "forbid"` itself. The check takes its answers
+  from cargo/rustc rather than re-deriving them: proc-macro crates from
+  `cargo metadata` target kinds (covering the `proc_macro = true` alias), and
+  the exact source-file set from rustc dep-info (covering `include!`d and
+  `#[path]`d files, any extension, a directory named `target`); macro names may
+  be raw identifiers. A committed fixture workspace
+  (`gates/forbid-unsafe-fixture`) of every escape shape is run through the real
+  check in CI and must flag all of them and nothing else. The gate's frozen
+  threat model is stated in the `forbid_unsafe_check.py` module doc.
 
 ### Changed
 - **Breaking:** `UrlAllowList::check` now returns `CheckedUrl` instead of
