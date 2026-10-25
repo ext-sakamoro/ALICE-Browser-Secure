@@ -185,6 +185,30 @@ fn dot_segments_and_encoded_separators_are_refused_with_or_without_a_prefix() {
 }
 
 #[test]
+fn encoded_reserved_bytes_and_double_encoding_are_refused() {
+    // the answer must not depend on how many times a server decodes the path: an encoded `%` (so %252f, %255c,
+    // %252e) and any other encoded reserved or control byte are refused, with or without a prefix
+    let with_prefix = stripe().with_path_prefix("/pay").expect("valid prefix");
+    let no_prefix = stripe();
+    for url in [
+        "https://checkout.stripe.com/pay/x%252fadmin",
+        "https://checkout.stripe.com/pay/x%255Cadmin",
+        "https://checkout.stripe.com/pay/%252e%252e/admin",
+        "https://checkout.stripe.com/pay/x%3Fq",
+        "https://checkout.stripe.com/pay/x%23f",
+        "https://checkout.stripe.com/pay/x%40y",
+        "https://checkout.stripe.com/pay/x%00y",
+        "https://checkout.stripe.com/pay/x%0Ay",
+    ] {
+        assert_eq!(with_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+        assert_eq!(no_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+    }
+    // unreserved and non-ASCII bytes may stay encoded
+    assert!(with_prefix.allows("https://checkout.stripe.com/pay/a%20b"));
+    assert!(with_prefix.allows("https://checkout.stripe.com/pay/caf%C3%A9"));
+}
+
+#[test]
 fn the_list_is_data_and_is_validated() {
     // entries are normalised the way URLs are (lowercase host, lowercase scheme)
     let l = UrlAllowList::new(&["HTTPS"], &["Checkout.Stripe.Com"]).expect("valid list");
