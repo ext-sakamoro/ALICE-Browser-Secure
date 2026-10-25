@@ -31,8 +31,15 @@ need actionlint "brew install actionlint"
 step "ci.yml / actionlint: actionlint"
 actionlint .github/workflows/*.yml
 
+step "ci.yml / url-crate: no-raw-open gate (self-test + scan)"
+python3 scripts/no_raw_open_check.py --self-test
+python3 scripts/no_raw_open_check.py src services
+
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi
+
+step "ci.yml / url-crate: cargo test (unit + integration + doctests, MIN_PASSED floor)"
+bash scripts/url_crate_test.sh
 
 echo; echo "preflight OK"
