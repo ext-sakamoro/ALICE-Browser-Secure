@@ -77,3 +77,7 @@ jobs:
       # allow-list, whose crates still can't declare launchers in extern blocks
       - run: python3 scripts/forbid_unsafe_check.py --self-test
       - run: python3 scripts/forbid_unsafe_check.py --allow-file gates/no-raw-open/unsafe-allow.toml
+      # the real check against a committed fixture of every escape shape
+      # (macro_rules / raw-ident / include! / dir-named-target / proc_macro
+      # alias / excluded path dep); it must flag all of them and nothing else
+      - run: bash scripts/forbid_unsafe_fixture_test.sh
