@@ -78,7 +78,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-800 py-8 text-center text-sm text-gray-600">
-        ALICE Browser Secure — AGPL-3.0
+        ALICE Browser Secure — LicenseRef-Proprietary
       </footer>
     </main>
   );
