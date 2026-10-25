@@ -106,8 +106,11 @@ pub enum UrlRejection {
     Port,
     /// The host is not a canonical ASCII host name, or is not on the list.
     Host,
-    /// The path is outside the list's path prefix, or carries a dot segment.
+    /// The path is outside the list's path prefix.
     PathPrefix,
+    /// The path carries a dot segment (`.` / `..`) or a percent-encoded `/`, `\\` or `.`: a server that decodes
+    /// them before routing would resolve the path somewhere else.
+    Path,
 }
 
 impl core::fmt::Display for UrlRejection {
@@ -119,6 +122,7 @@ impl core::fmt::Display for UrlRejection {
             Self::Port => "port not allowed",
             Self::Host => "host not allowed",
             Self::PathPrefix => "path outside the allowed prefix",
+            Self::Path => "path carries a dot segment or an encoded separator",
         })
     }
 }
@@ -275,6 +279,12 @@ pub fn parse_strict(url: &str) -> Result<StrictUrl, UrlRejection> {
     parse_after_scheme(scheme, rest)
 }
 
+/// `true` when the path carries `%2f` / `%5c` / `%2e` (any case) or a `.` / `..` segment.
+fn unsafe_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.contains("%2f") || lower.contains("%5c") || lower.contains("%2e") || has_dot_segment(path)
+}
+
 /// `true` when a path segment is `.` or `..`, written plainly or percent-encoded (`%2e`, any case).
 fn has_dot_segment(path: &str) -> bool {
     path.split('/').any(|seg| {
@@ -341,7 +351,9 @@ impl UrlAllowList {
     /// The parsed URL when it matches the list.
     ///
     /// # Errors
-    /// The [`UrlRejection`] of the first check it fails: malformed, scheme, then userinfo / port / host, then path.
+    /// The [`UrlRejection`] of the first check it fails: malformed, scheme, then userinfo / port / host, then a
+    /// dot segment or encoded separator in the path ([`UrlRejection::Path`], with or without a prefix), then the
+    /// prefix.
     pub fn check(&self, url: &str) -> Result<StrictUrl, UrlRejection> {
         let (scheme, rest) = split_scheme(url)?;
         if !self.schemes.contains(&scheme) {
@@ -351,6 +363,9 @@ impl UrlAllowList {
         if !self.hosts.contains(&parsed.host) {
             return Err(UrlRejection::Host);
         }
+        if unsafe_path(&parsed.path) {
+            return Err(UrlRejection::Path);
+        }
         if let Some(prefix) = &self.path_prefix {
             let inside = parsed.path == *prefix
                 || prefix.is_empty()
@@ -358,7 +373,7 @@ impl UrlAllowList {
                     .path
                     .strip_prefix(prefix.as_str())
                     .is_some_and(|rest| rest.starts_with('/'));
-            if !inside || has_dot_segment(&parsed.path) {
+            if !inside {
                 return Err(UrlRejection::PathPrefix);
             }
         }

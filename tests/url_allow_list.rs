@@ -160,7 +160,11 @@ fn dot_segments_and_encoded_separators_are_refused_with_or_without_a_prefix() {
         "https://checkout.stripe.com/pay/x%2Fy",
         "https://checkout.stripe.com/pay/x%5cy",
     ] {
-        assert_eq!(with_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+        assert_eq!(
+            with_prefix.check(url).err(),
+            Some(UrlRejection::Path),
+            "{url}"
+        );
     }
     let no_prefix = stripe();
     for url in [
@@ -170,7 +174,11 @@ fn dot_segments_and_encoded_separators_are_refused_with_or_without_a_prefix() {
         "https://checkout.stripe.com/a%2fb",
         "https://checkout.stripe.com/a%5Cb",
     ] {
-        assert_eq!(no_prefix.check(url).err(), Some(UrlRejection::Path), "{url}");
+        assert_eq!(
+            no_prefix.check(url).err(),
+            Some(UrlRejection::Path),
+            "{url}"
+        );
     }
     // percent-encoding of other bytes in the path is untouched
     assert!(no_prefix.allows("https://checkout.stripe.com/a%20b"));
