@@ -1,0 +1,17 @@
+# Self-test workspace for the no-raw-open gate.
+#
+# The stub crates are named exactly `open` / `opener` / `webbrowser` / `libc` /
+# `windows-sys`, so clippy resolves the call sites in `bypasses` to the same
+# paths the shipped clippy.toml disallows — without downloading the real crates.
+# This is a separate workspace (the repo root is not a workspace), so it does
+# not build with the url crate.
+[workspace]
+resolver = "2"
+members = [
+    "stub-open",
+    "stub-opener",
+    "stub-webbrowser",
+    "stub-libc",
+    "stub-windows-sys",
+    "bypasses",
+]

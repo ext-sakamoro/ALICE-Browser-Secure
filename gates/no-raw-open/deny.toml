@@ -1,0 +1,23 @@
+# no-raw-open gate — shipped cargo-deny snippet (complements the clippy gate).
+#
+# Merge this into the consumer's deny.toml. It forbids the opener crates from
+# the dependency graph except as a dependency of the consumer's single opener
+# crate (named in `wrappers`), so a URL opener cannot be pulled in anywhere but
+# that one place. The clippy `disallowed-methods` gate (gates/no-raw-open/clippy.toml)
+# catches the call sites; this catches the dependency.
+#
+# Replace `your-opener-crate` with the consumer's opener crate name.
+[bans]
+multiple-versions = "allow"
+
+[[bans.deny]]
+name = "open"
+wrappers = ["your-opener-crate"]
+
+[[bans.deny]]
+name = "opener"
+wrappers = ["your-opener-crate"]
+
+[[bans.deny]]
+name = "webbrowser"
+wrappers = ["your-opener-crate"]

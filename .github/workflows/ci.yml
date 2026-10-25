@@ -49,3 +49,21 @@ jobs:
         with:
           fail_level: error
           reporter: github-check
+
+  url-crate:
+    name: url crate (test + no-raw-open gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # the root crate is std-free and standalone; its tests (and the CheckedUrl
+      # compile-fail doctest) run here — the services matrix only `cargo check`s
+      # the script enforces a MIN_PASSED floor (fails on 0 = nothing ran)
+      - run: bash scripts/url_crate_test.sh
+      # the no-raw-open gate: clippy disallowed-methods catches every launch
+      # shape; the self-test lints a fixture of all bypasses and counts findings
+      - run: bash scripts/no_raw_open_selftest.sh

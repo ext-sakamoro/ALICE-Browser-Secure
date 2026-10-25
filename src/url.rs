@@ -373,7 +373,7 @@ impl UrlAllowList {
     /// The [`UrlRejection`] of the first check it fails: malformed, scheme, then userinfo / port / host, then a
     /// dot segment or encoded separator in the path ([`UrlRejection::Path`], with or without a prefix), then the
     /// prefix.
-    pub fn check(&self, url: &str) -> Result<StrictUrl, UrlRejection> {
+    pub fn check(&self, url: &str) -> Result<CheckedUrl, UrlRejection> {
         let (scheme, rest) = split_scheme(url)?;
         if !self.schemes.contains(&scheme) {
             return Err(UrlRejection::Scheme);
@@ -396,12 +396,179 @@ impl UrlAllowList {
                 return Err(UrlRejection::PathPrefix);
             }
         }
-        Ok(parsed)
+        Ok(CheckedUrl::new(parsed))
     }
 
     /// `true` when [`check`](Self::check) accepts `url`.
     #[must_use]
     pub fn allows(&self, url: &str) -> bool {
         self.check(url).is_ok()
+    }
+}
+
+/// A URL that has passed a [`UrlAllowList`].
+///
+/// The only way to obtain a `CheckedUrl` is [`UrlAllowList::check`], so holding
+/// one is proof the URL was allowed. [`as_str`](Self::as_str) renders the
+/// canonical URL from the already-validated parts (it does not re-parse), so
+/// what an opener receives is exactly what was checked.
+///
+/// The constructor is private; a `CheckedUrl` cannot be built outside this
+/// crate:
+///
+/// ```compile_fail,E0624
+/// use alice_browser_secure::url::{CheckedUrl, UrlAllowList};
+/// let list = UrlAllowList::new(&["https"], &["example.com"]).unwrap();
+/// let parts = list.check("https://example.com/").unwrap();
+/// // `new` is private — this must not compile
+/// let _forged = CheckedUrl::new(parts.parts().clone());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedUrl {
+    parts: StrictUrl,
+    rendered: String,
+}
+
+impl CheckedUrl {
+    /// Private: built only inside this module, by [`UrlAllowList::check`].
+    fn new(parts: StrictUrl) -> Self {
+        let rendered = render_strict(&parts);
+        Self { parts, rendered }
+    }
+
+    /// The canonical URL to open, assembled from the validated parts.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.rendered
+    }
+
+    /// The validated parts.
+    #[must_use]
+    pub fn parts(&self) -> &StrictUrl {
+        &self.parts
+    }
+}
+
+impl core::ops::Deref for CheckedUrl {
+    type Target = StrictUrl;
+    fn deref(&self) -> &StrictUrl {
+        &self.parts
+    }
+}
+
+/// Render a validated [`StrictUrl`] back to a canonical URL string.
+///
+/// Assembles the already-parsed, already-validated components; it does not
+/// re-parse, so it introduces no parser/serializer differential.
+fn render_strict(u: &StrictUrl) -> String {
+    let mut s = String::new();
+    s.push_str(&u.scheme);
+    s.push_str("://");
+    s.push_str(&u.host);
+    if let Some(port) = u.port {
+        s.push(':');
+        s.push_str(&port.to_string());
+    }
+    s.push_str(&u.path);
+    if let Some(query) = &u.query {
+        s.push('?');
+        s.push_str(query);
+    }
+    if let Some(fragment) = &u.fragment {
+        s.push('#');
+        s.push_str(fragment);
+    }
+    s
+}
+
+/// An opener that accepts only a [`CheckedUrl`].
+///
+/// A product's URL opener implements this; because the method takes a
+/// [`CheckedUrl`], a URL cannot be opened without first passing a
+/// [`UrlAllowList`] to obtain one. This crate opens nothing itself (it is
+/// `no_std`); the opener belongs to the consumer.
+pub trait UrlOpener {
+    /// The opener's error type.
+    type Error;
+    /// Open `url`.
+    ///
+    /// # Errors
+    /// Whatever the underlying opener reports.
+    fn open(&self, url: &CheckedUrl) -> Result<(), Self::Error>;
+}
+
+/// Open `url` with `opener`.
+///
+/// The signature takes a [`CheckedUrl`], so the caller must have obtained one
+/// from a [`UrlAllowList`] first.
+///
+/// # Errors
+/// Whatever `opener` reports.
+pub fn open_with<O: UrlOpener>(opener: &O, url: &CheckedUrl) -> Result<(), O::Error> {
+    opener.open(url)
+}
+
+#[cfg(test)]
+mod checked_url_tests {
+    use super::*;
+
+    fn list() -> UrlAllowList {
+        UrlAllowList::new(&["https", "http"], &["example.com", "a.example.com"]).unwrap()
+    }
+
+    #[test]
+    fn as_str_round_trips_through_parse_strict() {
+        let l = list();
+        for url in [
+            "https://example.com/",
+            "https://example.com/a/b",
+            "https://example.com/p?q=1&r=2",
+            "https://example.com/p#frag",
+            "https://example.com/p?q=1#f",
+            "https://example.com/pa%20th",   // %20 kept verbatim
+            "https://example.com/p?x=%41",   // %-encoded query kept verbatim
+            "http://a.example.com/x",
+        ] {
+            let checked = l.check(url).unwrap_or_else(|e| panic!("{url}: {e:?}"));
+            let via_rendered = parse_strict(checked.as_str()).expect("rendered re-parses");
+            let direct = parse_strict(url).expect("url parses");
+            assert_eq!(via_rendered, direct, "round trip for {url}");
+        }
+    }
+
+    #[test]
+    fn as_str_canonicalises_scheme_and_host_not_path() {
+        let c = list().check("HTTPS://Example.COM/Path").expect("mixed case accepted");
+        assert_eq!(c.as_str(), "https://example.com/Path");
+    }
+
+    #[test]
+    fn a_non_ascii_idn_host_never_reaches_as_str() {
+        // canonical_host refuses non-ASCII, so an IDN lookalike cannot become a CheckedUrl
+        assert!(list().check("https://ex\u{00e4}mple.com/").is_err());
+    }
+
+    #[test]
+    fn checked_url_derefs_to_the_validated_parts() {
+        let c = list().check("https://example.com/x").unwrap();
+        assert_eq!(c.host(), "example.com");
+        assert_eq!(c.scheme(), "https");
+        assert_eq!(c.parts().path(), "/x");
+    }
+
+    #[test]
+    fn open_with_receives_the_checked_canonical_url() {
+        struct Rec(core::cell::RefCell<String>);
+        impl UrlOpener for Rec {
+            type Error = ();
+            fn open(&self, url: &CheckedUrl) -> Result<(), ()> {
+                *self.0.borrow_mut() = url.as_str().into();
+                Ok(())
+            }
+        }
+        let c = list().check("HTTPS://Example.com/go?a=1").unwrap();
+        let rec = Rec(core::cell::RefCell::new(String::new()));
+        open_with(&rec, &c).unwrap();
+        assert_eq!(*rec.0.borrow(), "https://example.com/go?a=1");
     }
 }
