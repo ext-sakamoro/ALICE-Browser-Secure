@@ -525,8 +525,8 @@ mod checked_url_tests {
             "https://example.com/p?q=1&r=2",
             "https://example.com/p#frag",
             "https://example.com/p?q=1#f",
-            "https://example.com/pa%20th",   // %20 kept verbatim
-            "https://example.com/p?x=%41",   // %-encoded query kept verbatim
+            "https://example.com/pa%20th", // %20 kept verbatim
+            "https://example.com/p?x=%41", // %-encoded query kept verbatim
             "http://a.example.com/x",
         ] {
             let checked = l.check(url).unwrap_or_else(|e| panic!("{url}: {e:?}"));
@@ -538,7 +538,9 @@ mod checked_url_tests {
 
     #[test]
     fn as_str_canonicalises_scheme_and_host_not_path() {
-        let c = list().check("HTTPS://Example.COM/Path").expect("mixed case accepted");
+        let c = list()
+            .check("HTTPS://Example.COM/Path")
+            .expect("mixed case accepted");
         assert_eq!(c.as_str(), "https://example.com/Path");
     }
 
