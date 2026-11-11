@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   threat model is stated in the `forbid_unsafe_check.py` module doc.
 
 ### Changed
+- services/core-engine: alice-browser (feature `alice-core`) を path から git の branch main + version 0.2.0 に移した CI は空の stub crate をやめ、`alice-core` を有効にした build を実物で行う
 - **Breaking:** `UrlAllowList::check` now returns `CheckedUrl` instead of
   `StrictUrl`. `CheckedUrl` derefs to `StrictUrl`, so the part accessors
   (`host()`, `path()`, `scheme()`, …) still work; only an explicit
