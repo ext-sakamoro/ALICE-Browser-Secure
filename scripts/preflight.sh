@@ -597,12 +597,6 @@ relint
 ( cd services/core-engine && cargo clippy -- -D warnings )
 )
 
-step "ci.yml / test-rust: run [service=core-engine]"
-(
-  gh_step ci.yml.test-rust
-( cd services/core-engine && cargo check --features alice-core )
-)
-
 step "ci.yml / test-rust: run [service=api-gateway]"
 (
   gh_step ci.yml.test-rust

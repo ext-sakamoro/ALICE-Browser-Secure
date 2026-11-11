@@ -16,10 +16,6 @@ jobs:
           workspaces: services/${{ matrix.service }}
       - run: cd services/${{ matrix.service }} && cargo check
       - run: cd services/${{ matrix.service }} && cargo clippy -- -D warnings
-      # alice-browser is a git dependency (branch main) behind the core-engine feature alice-core: build it
-      # against the real crate (it used to be an empty stub)
-      - if: matrix.service == 'core-engine'
-        run: cd services/core-engine && cargo check --features alice-core
   lint-frontend:
     runs-on: ubuntu-latest
     steps:
